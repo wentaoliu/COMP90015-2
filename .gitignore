@@ -1,0 +1,7 @@
+.DS_Store
+.idea
+target/*
+out
+
+!target/ActivityStreamerClient.jar
+!target/ActivityStreamerServer.jar
