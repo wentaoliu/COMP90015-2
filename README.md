@@ -1,6 +1,6 @@
 # ActivityStreamer
 
-COMP90015 Distributed Systems __Project 1__
+COMP90015 Distributed Systems __Project 2__
 
 The compiled `.jar` files are located in the `target` directory.
 

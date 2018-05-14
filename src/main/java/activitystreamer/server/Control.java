@@ -120,26 +120,6 @@ public class Control extends Thread {
 		}
 	}
 
-	// Represents a message to be sent
-	// used by messages buffer
-	private class Message {
-		private String msg;
-		private Connection con;
-
-		public Message(String msg, Connection con) {
-			this.msg = msg;
-			this.con = con;
-		}
-
-		public String getMsg() {
-			return msg;
-		}
-
-		public Connection getCon() {
-			return con;
-		}
-	}
-
 	// logger
 	private static final Logger log = LogManager.getLogger();
 
@@ -177,7 +157,7 @@ public class Control extends Thread {
 	private static Map<String, ArrayList<Connection>> pendingLockRequests  = new HashMap<>();
 
 	// Messages buffer
-	private static Queue<Message> messageQueue = new LinkedList<>();
+	private static Queue<String> messageQueue = new LinkedList<>();
 	// Is this server trying to reconnect to another server?
 	private static Boolean reconnecting = false;
 
@@ -698,7 +678,7 @@ public class Control extends Thread {
 			// We have to try to reconnect to another server.
 			if(outgoingConnection == con) {
 
-				outgoingConnection = null;
+				reconnecting = true;
 
 				allKnownServers.removeIf(server -> server.getServerId().equals(outgoingConnectionId));
 				// sort all known servers by level and id
@@ -728,7 +708,9 @@ public class Control extends Thread {
 
 				// If still no one found, this server will become the root server,
 				// we won't try to reconnect to any server.
-
+				reconnecting = false;
+				outgoingConnectionId = null;
+				outgoingConnection = null;
 			}
 		}
 	}
@@ -738,12 +720,12 @@ public class Control extends Thread {
 	 */
 	public void reconnect(String hostname, int port) {
 		try {
-			reconnecting = true;
+
 			log.info("trying to reconnect to " + hostname + ":" + port);
 			Connection c = outgoingConnection(
 					new Socket(hostname, port));
 
-
+			reconnecting = false;
 
 			// Send an authentication message
 			JSONObject obj = new JSONObject();
@@ -753,7 +735,6 @@ public class Control extends Thread {
 			// The parent server is a valid server.
 			validatedServerConnections.add(c);
 
-			reconnecting = false;
 			clearBuffer();
 
 			log.info("Sending authentication request");
@@ -888,21 +869,29 @@ public class Control extends Thread {
 	}
 
 	private void sendMessage(Connection con, String msg) {
-		if(reconnecting) {
+		if(reconnecting && con == outgoingConnection) {
 			// If the server is reconnecting,
+			// and message is going to be sent to parent server,
 			// we should save the message in the buffer
-			messageQueue.add(new Message(msg, con));
+			messageQueue.add(msg);
 		} else {
 			con.writeMsg(msg);
 		}
 	}
 
 	private void clearBuffer() {
+		// If the current the server is the root server
+		// (no parent server)
+		// then discard all messages to be sent to parent server.
+		if(outgoingConnection == null) {
+			messageQueue.clear();
+			return;
+		}
 		// FIFO is guaranteed
-		Message m = messageQueue.poll();
-		while(m != null) {
-			m.getCon().writeMsg(m.getMsg());
-			m = messageQueue.poll();
+		String msg = messageQueue.poll();
+		while(msg != null) {
+			outgoingConnection.writeMsg(msg);
+			msg = messageQueue.poll();
 		}
 	}
 
@@ -920,7 +909,6 @@ public class Control extends Thread {
 		for(Connection con : connections) {
 			if(con!=current) {
 				sendMessage(con, res.toJSONString());
-
 			}
 		}
 	}
