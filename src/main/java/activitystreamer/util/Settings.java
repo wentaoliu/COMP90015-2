@@ -18,6 +18,11 @@ public class Settings {
 	private static int activityInterval = 5000; // milliseconds
 	private static String secret = null;
 	private static String username = "anonymous";
+	// Level indicates the level of current server in a tree structure.
+	// 0 is the default value.
+	// The actual value will be obtained from SERVER_INFO message
+	// after authentication.
+	private static int level = 0;
 
 	
 	public static int getLocalPort() {
@@ -84,7 +89,14 @@ public class Settings {
 		Settings.localHostname = localHostname;
 	}
 
-	
+	public static int getLevel() {
+		return level;
+	}
+
+	public static void setLevel(int level) {
+		Settings.level = level;
+	}
+
 	/*
 	 * some general helper functions
 	 */
