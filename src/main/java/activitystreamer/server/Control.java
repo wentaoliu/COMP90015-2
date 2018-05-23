@@ -273,6 +273,9 @@ public class Control extends Thread {
 				// Get and save the registered users.
 				JSONArray usersJsonArray = (JSONArray) reqObj.get("users");
 
+				// clear all users
+				registeredUsers.clear();
+
 				for(Object s: usersJsonArray) {
 					String[] user = ((String) s).split(":");
 					registeredUsers.add(new UserInfo(user[0], user[1]));
@@ -512,9 +515,12 @@ public class Control extends Thread {
 					return true;
 				}
 
+				username = (String) reqObj.get("username");
+
 				// Extract the activity object from the original message.
 				JSONObject activity = (JSONObject) reqObj.get("activity");
 				resObj.put("command", "ACTIVITY_BROADCAST");
+				activity.put("authenticated_user", username);
 				resObj.put("activity", activity);
 				// Send to the other clients and servers
 				broadcastMessage(validatedServerConnections, con, resObj);
