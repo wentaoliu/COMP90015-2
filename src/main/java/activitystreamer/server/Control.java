@@ -683,42 +683,47 @@ public class Control extends Thread {
 			// If the closed connection is our outgoing connection,
 			// We have to try to reconnect to another server.
 			if(outgoingConnection == con) {
-
-				reconnecting = true;
-
-				allKnownServers.removeIf(server -> server.getServerId().equals(outgoingConnectionId));
-				// sort all known servers by level and id
-				Collections.sort(allKnownServers);
-
-				// Firstly, try to find a server with higher level,
-				// from (current level + 1) to 0
-				for(ServerInfo s : allKnownServers) {
-					// Find the first server has a higher level
-					if(s.getLevel() < Settings.getLevel()) {
-						reconnect(s.getHostname(), s.getPort());
-						return;
-					}
-				}
-
-				// If no one was found,
-				// then try to find a server in the same level,
-				// but with a greater id (alphabetical).
-				for(ServerInfo s : allKnownServers) {
-					// Find the first server has a higher level
-					if(s.getLevel() == Settings.getLevel()
-							&& serverId.compareTo(s.getServerId()) > 0) {
-						reconnect(s.getHostname(), s.getPort());
-						return;
-					}
-				}
-
-				// If still no one found, this server will become the root server,
-				// we won't try to reconnect to any server.
-				reconnecting = false;
-				outgoingConnectionId = null;
-				outgoingConnection = null;
+				reconnectWorkflow();
 			}
 		}
+	}
+
+
+	// Re-connect Logic
+	public void reconnectWorkflow() {
+		reconnecting = true;
+
+		allKnownServers.removeIf(server -> server.getServerId().equals(outgoingConnectionId));
+		// sort all known servers by level and id
+		Collections.sort(allKnownServers);
+
+		// Firstly, try to find a server with higher level,
+		// from (current level + 1) to 0
+		for(ServerInfo s : allKnownServers) {
+			// Find the first server has a higher level
+			if(s.getLevel() < Settings.getLevel()) {
+				reconnect(s.getHostname(), s.getPort());
+				return;
+			}
+		}
+
+		// If no one was found,
+		// then try to find a server in the same level,
+		// but with a greater id (alphabetical).
+		for(ServerInfo s : allKnownServers) {
+			// Find the first server has a higher level
+			if(s.getLevel() == Settings.getLevel()
+					&& serverId.compareTo(s.getServerId()) > 0) {
+				reconnect(s.getHostname(), s.getPort());
+				return;
+			}
+		}
+
+		// If still no one found, this server will become the root server,
+		// we won't try to reconnect to any server.
+		reconnecting = false;
+		outgoingConnectionId = null;
+		outgoingConnection = null;
 	}
 
 	/*
@@ -802,6 +807,7 @@ public class Control extends Thread {
 
 	// send server announce
 	public boolean doActivity(){
+
 		// Broadcast server announce
 		JSONObject obj = new JSONObject();
 		obj.put("command", "SERVER_ANNOUNCE");
@@ -815,8 +821,30 @@ public class Control extends Thread {
 
 		// Refresh servers list
 		// Remove the server information received 2x interval time ago.
-		LocalDateTime time = LocalDateTime.now().minus(Settings.getActivityInterval(), ChronoUnit.MILLIS);
+		LocalDateTime time = LocalDateTime.now()
+				.minus(2 * Settings.getActivityInterval(), ChronoUnit.MILLIS);
 		allKnownServers.removeIf(server -> server.getTimestamp().isBefore(time));
+
+
+		// Check if the parent server is disconnected
+		if(outgoingConnection != null) {
+			boolean isDisconnected = true;
+
+			for(ServerInfo s : allKnownServers) {
+				if(s.getServerId().equals(outgoingConnectionId)) {
+					LocalDateTime timeout = LocalDateTime.now()
+							.minus((long)(1.2 * Settings.getActivityInterval()), ChronoUnit.MILLIS);
+					if(s.getTimestamp().isAfter(timeout)) {
+						isDisconnected = false;
+					}
+				}
+			}
+
+			if(isDisconnected) {
+				log.error("outgoing server is disconnected.");
+				reconnectWorkflow();
+			}
+		}
 
 		return false;
 	}
@@ -918,4 +946,5 @@ public class Control extends Thread {
 			}
 		}
 	}
+
 }
