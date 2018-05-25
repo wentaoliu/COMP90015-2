@@ -352,24 +352,36 @@ public class Control extends Thread {
 
 					log.error("this username is registered in this server");
 				} else {
-					// If the username is not already known to this server,
-					// record this username and password,
-					// then broadcast lock_request to all other servers.
+					if(validatedServerConnections.size() > 1) {
+						// If the username is not already known to this server,
+						// record this username and password,
+						// then broadcast lock_request to all other servers.
 
-					resObj.put("command", "LOCK_REQUEST");
-					resObj.put("username", username);
-					resObj.put("secret", secret);
-					// pass the original lock_request to other servers
-					broadcastMessage(validatedServerConnections, con, reqObj);
-					// Save this username and secret to local storage.
-					registeredUsers.add(new UserInfo(username, secret));
+						resObj.put("command", "LOCK_REQUEST");
+						resObj.put("username", username);
+						resObj.put("secret", secret);
+						// pass the original lock_request to other servers
+						broadcastMessage(validatedServerConnections, con, reqObj);
+						// Save this username and secret to local storage.
+						registeredUsers.add(new UserInfo(username, secret));
 
-					// Save the source connection
-					lockRequestSources.put(username, con);
-					// Save the servers that we sent lock_requests to.
-					pendingLockRequests.put(username, new ArrayList<>(validatedServerConnections));
+						// Save the source connection
+						lockRequestSources.put(username, con);
+						// Save the servers that we sent lock_requests to.
+						ArrayList<Connection> sentConnections =
+								new ArrayList<>(validatedServerConnections);
+						sentConnections.remove(con);
+ 						pendingLockRequests.put(username, new ArrayList<>(sentConnections));
 
-					log.info("lock allowed");
+						log.info("passing lock request");
+					} else {
+						resObj.put("command", "LOCK_ALLOWED");
+						resObj.put("username", username);
+						resObj.put("secret", secret);
+
+						sendMessage(con, resObj.toJSONString());
+						log.info("lock allowed");
+					}
 				}
 				return false;
 
@@ -428,6 +440,8 @@ public class Control extends Thread {
 				// If the username is registered by a client of this server
 				if (pendingRegisterRequests.containsKey(username)) {
 
+					pendingRegisterRequests.get(username).remove(con);
+
 					// connections
 					ArrayList<Connection> remainingConnections =
 							new ArrayList<>(pendingRegisterRequests.get(username));
@@ -449,6 +463,11 @@ public class Control extends Thread {
 
 						sendMessage(registerRequestSources.get(username), resObj.toJSONString());
 
+						resObj.clear();
+						resObj.put("command", "LOGIN_SUCCESS");
+						resObj.put("info", "logged in as " + username);
+						sendMessage(registerRequestSources.get(username), resObj.toJSONString());
+
 						// Remove from pending list
 						pendingRegisterRequests.remove(username);
 						registerRequestSources.remove(username);
@@ -462,6 +481,8 @@ public class Control extends Thread {
 				// If this username is requested by a server,
 				// the process is similar.
 				if (pendingLockRequests.containsKey(username)) {
+
+					pendingLockRequests.get(username).remove(con);
 
 					ArrayList<Connection> remainingConnections =
 							new ArrayList<>(pendingLockRequests.get(username));
@@ -488,9 +509,11 @@ public class Control extends Thread {
 				if (!validateServerConnection(con)) return true;
 
 				username = (String) reqObj.get("username");
+				secret = (String) reqObj.get("secret");
 
 				// remove the username and password from local storage
-				registeredUsers.removeIf(user -> user.getUsername().equals(username));
+				registeredUsers.removeIf(user -> user.getUsername().equals(username)
+						&& user.getSecret().equals(secret));
 
 				// Then pass the message on
 				broadcastMessage(validatedServerConnections, con, reqObj);
@@ -629,7 +652,7 @@ public class Control extends Thread {
 					// Temporarily store this username and secret to local storage
 					registeredUsers.add(new UserInfo(username, secret));
 
-					if(allKnownServers.size() > 0) {
+					if(validatedServerConnections.size() > 0) {
 						// if there are other servers in this network,
 						// we have to check other servers for this username
 						resObj.put("command", "LOCK_REQUEST");
@@ -648,10 +671,17 @@ public class Control extends Thread {
 					} else {
 						resObj.put("command", "REGISTER_SUCCESS");
 						resObj.put("info", "register success for " + username);
+						sendMessage(con, resObj.toJSONString());
+
+						log.info(username + " registered successfully");
+
+						resObj.clear();
+						resObj.put("command", "LOGIN_SUCCESS");
+						resObj.put("info", "logged in as " + username);
+						sendMessage(con, resObj.toJSONString());
 
 						validatedClientConnections.add(con);
 
-						log.info(username + " registered successfully");
 						return false;
 					}
 				} else { // if the username is taken
