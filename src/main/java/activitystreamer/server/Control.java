@@ -822,7 +822,7 @@ public class Control extends Thread {
 		// Refresh servers list
 		// Remove the server information received 2x interval time ago.
 		LocalDateTime time = LocalDateTime.now()
-				.minus(2 * Settings.getActivityInterval(), ChronoUnit.MILLIS);
+				.minus((long)(2.5 * Settings.getActivityInterval()), ChronoUnit.MILLIS);
 		allKnownServers.removeIf(server -> server.getTimestamp().isBefore(time));
 
 
