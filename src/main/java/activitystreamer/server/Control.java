@@ -352,6 +352,10 @@ public class Control extends Thread {
 
 					log.error("this username is registered in this server");
 				} else {
+
+					// Save this username and secret to local storage.
+					registeredUsers.add(new UserInfo(username, secret));
+
 					if(validatedServerConnections.size() > 1) {
 						// If the username is not already known to this server,
 						// record this username and password,
@@ -362,8 +366,6 @@ public class Control extends Thread {
 						resObj.put("secret", secret);
 						// pass the original lock_request to other servers
 						broadcastMessage(validatedServerConnections, con, reqObj);
-						// Save this username and secret to local storage.
-						registeredUsers.add(new UserInfo(username, secret));
 
 						// Save the source connection
 						lockRequestSources.put(username, con);
@@ -468,11 +470,25 @@ public class Control extends Thread {
 						resObj.put("info", "logged in as " + username);
 						sendMessage(registerRequestSources.get(username), resObj.toJSONString());
 
+						log.info(username + " registered successfully");
+
+						resObj.clear();
+						// if the client logged in successfully,
+						// we will check whether it needs to be redirected to another server.
+						for (ServerInfo s : allKnownServers) {
+							if (s.getLoad() < (validatedClientConnections.size() - 2)) {
+								// there is a server with a load at least 2 clients less
+								resObj.put("command", "REDIRECT");
+								resObj.put("hostname", s.getHostname());
+								resObj.put("port", s.getPort());
+								sendMessage(registerRequestSources.get(username), resObj.toJSONString());
+								log.info("redirect to another server");
+							}
+						}
+
 						// Remove from pending list
 						pendingRegisterRequests.remove(username);
 						registerRequestSources.remove(username);
-
-						log.info(username + " registered successfully");
 					}
 					// Otherwise we have to wait for more responses.
 					return false;
@@ -681,6 +697,21 @@ public class Control extends Thread {
 						sendMessage(con, resObj.toJSONString());
 
 						validatedClientConnections.add(con);
+
+						resObj.clear();
+						// if the client logged in successfully,
+						// we will check whether it needs to be redirected to another server.
+						for (ServerInfo s : allKnownServers) {
+							if (s.getLoad() < (validatedClientConnections.size() - 2)) {
+								// there is a server with a load at least 2 clients less
+								resObj.put("command", "REDIRECT");
+								resObj.put("hostname", s.getHostname());
+								resObj.put("port", s.getPort());
+								sendMessage(con, resObj.toJSONString());
+								log.info("redirect to another server");
+								return true;
+							}
+						}
 
 						return false;
 					}
